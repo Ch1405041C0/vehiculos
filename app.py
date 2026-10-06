@@ -1,5 +1,7 @@
 from flask import Flask, abort, jsonify, render_template, request
 
+from stock import StockCatalog
+
 app = Flask(__name__)
 
 VEHICLES = [
@@ -11,22 +13,35 @@ VEHICLES = [
     {"id":6,"brand":"Peugeot","model":"208 Feline","year":2023,"km":19000,"transmission":"Automática","fuel":"Nafta","type":"Auto","price":"$ 24.600.000","tag":"Bajo kilometraje","image":"https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=1200&q=80","features":["i-Cockpit","Techo panorámico","Climatizador","Cámara 180°","CarPlay / Android Auto","Sensores traseros"]}
 ]
 
+stock = StockCatalog(VEHICLES)
+
+
 @app.route('/')
 def home():
-    return render_template('index.html', vehicles=VEHICLES)
+    return render_template('index.html', vehicles=stock.public_list())
+
 
 @app.route('/vehiculo/<int:vehicle_id>')
 def vehicle(vehicle_id):
-    item = next((v for v in VEHICLES if v['id'] == vehicle_id), None)
-    if not item: abort(404)
+    item = stock.public_get(vehicle_id)
+    if not item:
+        abort(404)
     return render_template('vehicle.html', vehicle=item)
+
 
 @app.get('/api/vehiculos')
 def vehicles_api():
-    q = request.args.get('q','').lower()
-    kind = request.args.get('type','').lower()
-    data = [v for v in VEHICLES if (not q or q in f"{v['brand']} {v['model']} {v['year']}".lower()) and (not kind or kind == 'todos' or v['type'].lower() == kind)]
-    return jsonify(data)
+    return jsonify(stock.public_list(
+        query=request.args.get('q', ''),
+        vehicle_type=request.args.get('type', ''),
+    ))
+
+
+@app.get('/api/admin/stock')
+def admin_stock_api():
+    # Boundary for the future authenticated operations panel.
+    return jsonify(stock.admin_list())
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5100, debug=True)
