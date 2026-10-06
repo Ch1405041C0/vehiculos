@@ -1,5 +1,7 @@
 from flask import Flask, abort, jsonify, render_template, request
 
+from matcher import VehiclePreferences, profile_vehicle, rank_vehicles
+
 app = Flask(__name__)
 
 VEHICLES = [
@@ -11,22 +13,59 @@ VEHICLES = [
     {"id":6,"brand":"Peugeot","model":"208 Feline","year":2023,"km":19000,"transmission":"Automática","fuel":"Nafta","type":"Auto","price":"$ 24.600.000","tag":"Bajo kilometraje","image":"https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&w=1200&q=80","features":["i-Cockpit","Techo panorámico","Climatizador","Cámara 180°","CarPlay / Android Auto","Sensores traseros"]}
 ]
 
+
+def _vehicle_with_profile(vehicle: dict) -> dict:
+    return {**vehicle, "profile": profile_vehicle(vehicle)}
+
+
 @app.route('/')
 def home():
-    return render_template('index.html', vehicles=VEHICLES)
+    return render_template('index.html', vehicles=[_vehicle_with_profile(v) for v in VEHICLES])
+
 
 @app.route('/vehiculo/<int:vehicle_id>')
 def vehicle(vehicle_id):
     item = next((v for v in VEHICLES if v['id'] == vehicle_id), None)
-    if not item: abort(404)
-    return render_template('vehicle.html', vehicle=item)
+    if not item:
+        abort(404)
+    return render_template('vehicle.html', vehicle=_vehicle_with_profile(item))
+
 
 @app.get('/api/vehiculos')
 def vehicles_api():
-    q = request.args.get('q','').lower()
-    kind = request.args.get('type','').lower()
-    data = [v for v in VEHICLES if (not q or q in f"{v['brand']} {v['model']} {v['year']}".lower()) and (not kind or kind == 'todos' or v['type'].lower() == kind)]
+    q = request.args.get('q', '').lower()
+    kind = request.args.get('type', '').lower()
+    data = [
+        _vehicle_with_profile(v)
+        for v in VEHICLES
+        if (not q or q in f"{v['brand']} {v['model']} {v['year']}".lower())
+        and (not kind or kind == 'todos' or v['type'].lower() == kind)
+    ]
     return jsonify(data)
+
+
+@app.post('/api/recomendaciones')
+def recommendations_api():
+    data = request.get_json(silent=True) or {}
+    preferences = VehiclePreferences(
+        vehicle_types=tuple(str(item) for item in data.get('types', []) if str(item).strip()),
+        transmission=str(data.get('transmission', '')).strip(),
+        fuel=str(data.get('fuel', '')).strip(),
+        priorities=tuple(str(item) for item in data.get('priorities', []) if str(item).strip()),
+        usage=str(data.get('usage', '')).strip(),
+    )
+    by_id = {vehicle['id']: vehicle for vehicle in VEHICLES}
+    ranked = rank_vehicles(VEHICLES, preferences)
+    results = []
+    for match in ranked:
+        vehicle = by_id[match.vehicle_id]
+        results.append({
+            'vehicle': _vehicle_with_profile(vehicle),
+            'score': match.score,
+            'reasons': list(match.reasons),
+        })
+    return jsonify({'results': results})
+
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5100, debug=True)
