@@ -18,6 +18,11 @@ def home():
     return render_template('index.html')
 
 
+@app.route('/buscar')
+def search_flow():
+    return render_template('search.html')
+
+
 @app.route('/vehiculo/<int:vehicle_id>')
 def vehicle(vehicle_id):
     item = stock.public_get(vehicle_id)
